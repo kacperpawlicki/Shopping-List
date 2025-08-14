@@ -1,5 +1,8 @@
 package com.example.shoppinglist
 
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import android.content.Context
 import android.content.res.Resources
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -43,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +64,12 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.edit
 import com.example.shoppinglist.ui.theme.ShoppingListTheme
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +94,15 @@ class MainActivity : ComponentActivity() {
 
                 val keyboardController = LocalSoftwareKeyboardController.current
 
+                //testowy kod
+                val context = LocalContext.current
+                val scope = rememberCoroutineScope()
+                val listState = rememberLazyListState()
+
+                LaunchedEffect(Unit) {
+                    shoppingItems = ShoppingRepository.loadList(context)
+                }
+                //
 
                 Column(
                     modifier = Modifier
@@ -114,6 +133,9 @@ class MainActivity : ComponentActivity() {
                             IconButton(
                                 onClick = {
                                     shoppingItems = emptyList()
+                                    scope.launch {
+                                        ShoppingRepository.saveList(context, emptyList())
+                                    }
                                 }
                             ) {
                                 Icon(
@@ -125,6 +147,11 @@ class MainActivity : ComponentActivity() {
                             IconButton(
                                 onClick = {
                                     addingItems = !addingItems
+                                    if (!addingItems){
+                                        scope.launch {
+                                            listState.animateScrollToItem(0)
+                                        }
+                                    }
                                 }
                             ) {
                                 Icon(
@@ -144,8 +171,8 @@ class MainActivity : ComponentActivity() {
 
                     LazyColumn(
                         modifier = Modifier
-                            .weight(1f)
-
+                            .weight(1f),
+                        state = listState
                     ) {
                         items(shoppingItems) { currentItem ->
                             var isChecked by remember {
@@ -162,6 +189,9 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             isChecked = !isChecked
                                             currentItem.checked = isChecked
+                                            scope.launch {
+                                                ShoppingRepository.saveList(context, shoppingItems)
+                                            }
                                         }
                                     }
                             ) {
@@ -171,6 +201,9 @@ class MainActivity : ComponentActivity() {
                                         isChecked = it
                                         currentItem.checked = it
                                         addingItems = false
+                                        scope.launch {
+                                            ShoppingRepository.saveList(context, shoppingItems)
+                                        }
                                     }
                                 )
                                 Text(
@@ -191,6 +224,9 @@ class MainActivity : ComponentActivity() {
 
                         BackHandler {
                             addingItems = false
+                            scope.launch {
+                                listState.animateScrollToItem(0)
+                            }
                             name = ""
                         }
 
@@ -215,8 +251,13 @@ class MainActivity : ComponentActivity() {
                                 keyboardActions = KeyboardActions(
                                     onDone = {
                                         keyboardController?.hide()
-                                        addingItems = false
+                                        shoppingItems = shoppingItems + ShoppingItem(name, false)
                                         name = ""
+                                        scope.launch {
+                                            ShoppingRepository.saveList(context, shoppingItems)
+                                            listState.animateScrollToItem(0)
+                                        }
+                                        addingItems = false
                                     }
                                 ),
                                 placeholder = {Text(text = "Dodaj produkt...")},
@@ -229,8 +270,15 @@ class MainActivity : ComponentActivity() {
                                             if(name.isNotBlank()) {
                                                 shoppingItems = shoppingItems + ShoppingItem(name, false)
                                                 name = ""
+                                                scope.launch {
+                                                    ShoppingRepository.saveList(context, shoppingItems)
+                                                    listState.animateScrollToItem(shoppingItems.lastIndex)
+                                                }
                                             } else {
                                                 addingItems = false
+                                                scope.launch {
+                                                    listState.animateScrollToItem(0)
+                                                }
                                             }
                                         }
                                     ) {
@@ -250,3 +298,26 @@ class MainActivity : ComponentActivity() {
 }
 
 data class ShoppingItem (val name: String, var checked: Boolean)
+
+
+//testowy kod
+val Context.dataStore by preferencesDataStore(name = "shopping_list")
+val SHOPPING_LIST_KEY = stringPreferencesKey("shopping_list")
+
+object ShoppingRepository {
+    private val gson = Gson()
+
+    suspend fun saveList(context: Context, list: List<ShoppingItem>) {
+        val json = gson.toJson(list)
+        context.dataStore.edit { prefs ->
+            prefs[SHOPPING_LIST_KEY] = json
+        }
+    }
+
+    suspend fun loadList(context: Context): List<ShoppingItem> {
+        val prefs = context.dataStore.data.first()
+        val json = prefs[SHOPPING_LIST_KEY] ?: "[]"
+        val type = object : TypeToken<List<ShoppingItem>>() {}.type
+        return gson.fromJson(json, type)
+    }
+}
