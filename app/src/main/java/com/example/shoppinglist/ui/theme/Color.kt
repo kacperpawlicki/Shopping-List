@@ -2,10 +2,10 @@ package com.example.shoppinglist.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+val BackgroundDark = Color(0xFF1F242B)
+val HeaderDark = Color(0xFFECE7DD)
+val FontDark = Color(0xFFF1EFEB)
 
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+val BackgroundLight = Color(0xFFF3E2D4)
+val HeaderLight = Color(0xFF415E72)
+val FontLight = Color(0xFF17313E)
