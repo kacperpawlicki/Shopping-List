@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,6 +91,7 @@ fun ShoppingListScreen(){
     var shoppingItems by remember { mutableStateOf(listOf<ShoppingItem>()) }
     var name by remember { mutableStateOf("") }
     var addingItems by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         shoppingItems = ShoppingRepository.loadList(context)
@@ -105,10 +108,7 @@ fun ShoppingListScreen(){
 
         TopBar(
             onDeleteAll = {
-                shoppingItems = emptyList()
-                scope.launch {
-                    ShoppingRepository.saveList(context, emptyList())
-                }
+                showDialog = true
             },
             onAddingToggle = {
                 addingItems = !addingItems
@@ -134,6 +134,23 @@ fun ShoppingListScreen(){
                     ShoppingRepository.saveList(context, shoppingItems)
                 }
             })
+
+        if(showDialog) {
+            DeleteConfirmationDialog(
+                onConfirm = {
+                    shoppingItems = emptyList()
+                    scope.launch {
+                        ShoppingRepository.saveList(context, emptyList())
+                    }
+                    showDialog = false
+                    addingItems = false
+                },
+                onDismiss = {
+                    showDialog = false
+                    addingItems = false
+                }
+            )
+        }
 
         if(addingItems) {
             AddItemField(
@@ -168,6 +185,30 @@ fun ShoppingListScreen(){
 
     }
 
+}
+
+
+@Composable
+fun DeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: () -> Unit){
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        title = {
+            Text(text = "Potwierdzenie")
+        },
+        text = {
+            Text("Czy na pewno chcesz usunąć wszystkie elementy?")
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm() }) {
+                Text("Usuń")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onDismiss() }) {
+                Text("Anuluj")
+            }
+        }
+    )
 }
 
 @Composable
