@@ -37,8 +37,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
@@ -59,8 +63,10 @@ import androidx.datastore.preferences.core.edit
 import com.example.shoppinglist.ui.theme.ShoppingListTheme
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.UUID
 import kotlin.collections.plus
 
 /*
@@ -128,12 +134,18 @@ fun ShoppingListScreen(){
             modifier = Modifier.weight(1f),
             onItemCheckedChange = { currentItem, checked ->
                 currentItem.checked = checked
-                addingItems = false
                 name = ""
                 scope.launch {
                     ShoppingRepository.saveList(context, shoppingItems)
                 }
-            })
+            },
+            onRemove = { item ->
+                shoppingItems = shoppingItems - item
+                scope.launch {
+                    ShoppingRepository.saveList(context, shoppingItems)
+                }
+            }
+        )
 
         if(showDialog) {
             DeleteConfirmationDialog(
@@ -167,7 +179,7 @@ fun ShoppingListScreen(){
                 },
                 onSubmit = {
                     if(name.isNotBlank()) {
-                        shoppingItems = shoppingItems + ShoppingItem(name, false)
+                        shoppingItems = shoppingItems + ShoppingItem(name = name, checked = false)
                         name = ""
                         scope.launch {
                             ShoppingRepository.saveList(context, shoppingItems)
@@ -250,22 +262,65 @@ fun TopBar(onDeleteAll: () -> Unit, onAddingToggle: () -> Unit) {
 }
 
 @Composable
-fun ShoppingList(listState: LazyListState, items: List<ShoppingItem>, onItemCheckedChange: (ShoppingItem, Boolean) -> Unit, modifier: Modifier) {
+fun ShoppingList(
+    listState: LazyListState,
+    items: List<ShoppingItem>,
+    onItemCheckedChange: (ShoppingItem, Boolean) -> Unit,
+    onRemove: (ShoppingItem) -> Unit,
+    modifier: Modifier
+) {
     LazyColumn(
         modifier = modifier,
         state = listState
     ) {
-        items(items) { currentItem ->
-            ShoppingListItem(currentItem,
-                onCheckedChange = { checked ->
-                    onItemCheckedChange(currentItem, checked)
-            })
+        items(items, key = { it.id }) { currentItem ->
+            val swipeToDismissBoxState = rememberSwipeToDismissBoxState(
+                confirmValueChange = {
+                    it == SwipeToDismissBoxValue.StartToEnd
+                }
+            )
+
+            SwipeToDismissBox(
+                state = swipeToDismissBoxState,
+                backgroundContent = {
+                    if (swipeToDismissBoxState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0x2D650808))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Usuń",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+            ) {
+                LaunchedEffect(swipeToDismissBoxState.currentValue) {
+                    if (swipeToDismissBoxState.currentValue == SwipeToDismissBoxValue.StartToEnd) {
+                        delay(50)
+                        onRemove(currentItem)
+                    }
+                }
+                ShoppingListItem(currentItem,
+                    onCheckedChange = { checked ->
+                        onItemCheckedChange(currentItem, checked)
+                    },
+                    )
+            }
         }
     }
 }
 
 @Composable
-fun ShoppingListItem(item: ShoppingItem, onCheckedChange: (Boolean) -> Unit) {
+fun ShoppingListItem(
+    item: ShoppingItem,
+    onCheckedChange: (Boolean) -> Unit,
+) {
     var isChecked by remember {
         mutableStateOf(item.checked)
     }
@@ -274,10 +329,10 @@ fun ShoppingListItem(item: ShoppingItem, onCheckedChange: (Boolean) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
+            .clickable(onClick = {
                 isChecked = !isChecked
                 onCheckedChange(isChecked)
-            }
+            })
     ) {
         Checkbox(
             checked = isChecked,
@@ -345,7 +400,11 @@ fun AddItemField(name: String, onCancel: () -> Unit, onNameChange: (String) -> U
 
 
 
-data class ShoppingItem (val name: String, var checked: Boolean)
+data class ShoppingItem (
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    var checked: Boolean
+)
 
 
 //tworzy nowa instancje dataStore przypisana do kontekstu
